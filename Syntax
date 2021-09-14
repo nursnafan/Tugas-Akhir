@@ -1,0 +1,414 @@
+library(readxl)
+library(MASS)
+library(spgwr)
+library(zoo)
+library(lmtest)
+data <- read_excel("D:/Apa hayo/datatugasakhir.xlsx")
+View(data)
+long = as.matrix(data[,2])
+lat = as.matrix(data[,3])
+time = as.matrix(data[,4])
+y = as.matrix(data[,5])
+x1 = as.matrix(data[,6])
+x2 = as.matrix(data[,7])
+x3 = as.matrix(data[,8])
+n = nrow(y)
+x = as.matrix(cbind(rep(1,n),data[,6:8]))
+p = ncol(x)
+beta = as.matrix(c(15,0,0,0))
+alfa = 1
+start = as.matrix(c(alfa,beta))
+a = matrix(nrow=1,ncol=1)
+hasil = matrix(nrow = p,ncol = n)
+z = matrix(nrow = p,ncol = n)
+se = matrix(nrow = p,ncol = n)
+pval = matrix(nrow = p,ncol = n)
+param = matrix(nrow = p,ncol = n)
+signi = matrix(nrow = p,ncol = n)
+at = matrix(nrow=1,ncol=1)
+hasilt = matrix(nrow = p,ncol = n)
+zt = matrix(nrow = p,ncol = n)
+set = matrix(nrow = p,ncol = n)
+pvalt = matrix(nrow = p,ncol = n)
+paramt = matrix(nrow = p,ncol = n)
+signit = matrix(nrow = p,ncol = n)
+a = NULL
+at = NULL
+a_gamma = NULL
+#Penaksiran parameter regresi gamma
+{
+Q_gamma=function(param)
+{
+be = as.matrix(param[1:p])
+bet = exp(x%*%be)
+for (j in 1:n)
+{
+a_gamma[j] = (-n*log(gamma(alfa)))+(-
+alfa*log(bet[j]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[j])))+(-
+((y[j]*alfa)/(bet[j])))
+}
+Q_gamma=sum(a_gamma)
+}
+}
+fit_gamma = optim(par=start[2:5],fn=Q_gamma,control=list(fnscale=-
+1,maxit=1000,ndeps=rep(1e-6,4)),hessian=TRUE)
+parameter_gamma=as.matrix(fit_gamma$par)
+hes=fit_gamma$hessian
+inv=diag(solve(-hes))
+se_gamma=as.matrix(sqrt(abs(inv)))
+z_gamma=parameter_gamma/se_gamma
+pv_gamma=2*pnorm(abs(z_gamma),lower.tail=FALSE)
+#Nilai Devians regresi gamma
+b = as.matrix(parameter_gamma[1:p,])
+bet1 = matrix(nrow=n,ncol=1)
+bet0 = matrix(nrow=n,ncol=1)
+H0gamma=matrix(nrow=1,ncol=n)
+H1gamma=matrix(nrow=1,ncol=n)
+{
+for (i in 1:n)
+{
+bet0[i]=exp(b[1])
+bet1[i]=exp(x[i,]%*%b)
+H0gamma[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(bet0[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(bet0[i])))
+H1gamma[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(bet1[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(bet1[i])))
+}
+}
+L0_gamma=sum(H0gamma)
+L1_gamma=sum(H1gamma)
+loglike_gamma=t(rbind(H1gamma,H0gamma))
+LR_gamma=2*(L1_gamma-L0_gamma)
+AICc_gamma=-
+2*L1_gamma+2*(nrow(param))+(2*(nrow(param))*(nrow(param)+1))/(n-
+(nrow(param))-1)
+#matriks pembobot
+d = matrix(c(0),n,n,byrow=T)
+wfg = matrix(c(0),n,n,byrow=T)
+for (i in 1:n){
+for (j in 1:n){
+d[i,j] = sqrt(((long[i]-long[j])^2)+((lat[i]-lat[j])^2))
+}
+}
+bw.fg =
+gwr.sel(y~x1+x2+x3,coords=cbind(data$U,data$V),adapt=FALSE,gweight=
+gwr.Gauss)
+for (i in 1:n){
+for (j in 1:n){
+wfg[i,j] = exp(-0.5*((d[i,j]/bw.fg)^2))
+}
+}
+#Uji Breusch-Pagan (Heterogenitas spasial)
+bptest(y~x1+x2+x3)
+#Penaksiran GWGamma
+{
+for (i in 1:n)
+{
+Q_gwgamma = function(param)
+{
+bet = as.matrix(param[1:p])
+betgw = exp(x%*%bet)
+for (j in 1:n)
+{
+a[j] = (-log(gamma(alfa)))+(-
+alfa*log(betgw[j]))+(alfa*log(alfa))+((alfa-1)*(log(y[j])))+(-
+((y[j]*alfa)/(betgw[j])))*wfg[i,j]
+}
+Q_gwgamma = sum(a)
+}
+fit=optim(par=start[2:5],fn=Q_gwgamma,control=list(fnscale=-
+1,ndeps=rep(1e-6,4)),hessian=TRUE)
+parameter=as.matrix(fit$par)
+hes=fit$hessian
+inv=diag(solve(-hes))
+hasil[,i]=parameter
+se[,i]=as.matrix(sqrt(abs(inv)))
+z[,i]=hasil[,i]/se[,i]
+pval[,i]=2*pnorm(abs(z[,i]),lower.tail=FALSE)
+for(j in 1:p)
+{
+if (pval[j,i]<0.01)
+signi[j,i]="***"
+else
+if (pval[j,i]<0.05)
+signi[j,i]=" **"
+else
+if (pval[j,i]<0.1)
+signi[j,i]=" *"
+else signi[j,i]="..."
+}
+}
+}
+#Nilai Devians GWGamma
+b1 = hasil[1:p,]
+betgw1 = matrix(nrow=n,ncol=1)
+betgw0 = matrix(nrow=n,ncol=1)
+H0=matrix(nrow=1,ncol=n)
+H1=matrix(nrow=1,ncol=n)
+{
+for (i in 1:n)
+{
+betgw0[i]=exp(b1[1,i])
+betgw1[i]=exp((x[i,]%*%b1[,i]))
+H0[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgw0[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgw0[i])))
+H1[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgw1[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgw1[i])))
+}
+}
+L0=sum(H0)
+L1=sum(H1)
+loglike=t(rbind(H1,H0))
+LR=2*(L1-L0)
+AICc_GWGamma=-
+2*L1+2*(nrow(param))+(2*(nrow(param))*(nrow(param)+1))/(n-
+(nrow(param))-1)
+#Uji kesamaan model antara RegGamma dengan GWGamma
+Fhit=(LR_gamma/3)/(LR/3)
+write.csv(d,file="D:// euclidean_1.csv")
+write.csv(wfg,file="D:// matriks_gwgr.csv")
+write.csv(hasil,file="D:// koef_parameter_gwgr.csv")
+write.csv(z,file="D:// nilai_z_gwgr.csv")
+write.csv(pval,file="D:// GWGamma22_Pval.csv")
+#GTWR Gamma
+#Menentukan parameter tau teroptimum
+GTWGamma = function(tau0)
+{
+dt = matrix(c(0),n,n,byrow=T)
+wt = matrix(c(0),n,n,byrow=T)
+tau = tau0
+for (i in 1:n){
+for (j in 1:n){
+dt[i,j] = sqrt(((long[i]-long[j])^2)+((lat[i]-lat[j])^2)+(tau*(((time[i]-
+time[j])/36)^2)))
+wt[i,j] = exp(-0.5*((dt[i,j]/bw.fg)^2))
+}
+}
+#estimasi parameter
+{
+for (i in 1:n)
+{
+Q_gtw = function(param)
+{
+bett = as.matrix(param[1:p])
+betgtwr = exp(x%*%bett)
+for (j in 1:n)
+{
+at[j] = (-log(gamma(alfa)))+(-
+alfa*log(betgtwr[j]))+(alfa*log(alfa))+((alfa-1)*(log(y[j])))+(-
+((y[j]*alfa)/(betgtwr[j])))*wt[i,j]
+}
+Q_gtw = sum(at)
+}
+
+fit=optim(par=start[2:5],fn=Q_gtw,control=list(fnscale=-1,ndeps=rep(1e-
+6,4)),hessian=TRUE)
+
+parametert=as.matrix(fit$par)
+hes=fit$hessian
+invt=diag(solve(-hes))
+hasilt[,i]=parametert
+set[,i]=as.matrix(sqrt(abs(invt)))
+zt[,i]=hasilt[,i]/set[,i]
+pvalt[,i]=2*pnorm(abs(zt[,i]),lower.tail=FALSE)
+for(j in 1:p)
+{
+if (pvalt[j,i]<0.01)
+signit[j,i]="***"
+else
+if (pvalt[j,i]<0.05)
+signit[j,i]=" **"
+else
+if (pvalt[j,i]<0.1)
+signit[j,i]=" *"
+else signit[j,i]="..."
+}
+}
+}
+#Nilai Devians GTWGamma
+b1t = hasilt[1:p,]
+betgtwr1 = matrix(nrow=n,ncol=1)
+betgtwr0 = matrix(nrow=n,ncol=1)
+H0t=matrix(nrow=1,ncol=n)
+H1t=matrix(nrow=1,ncol=n)
+{
+for (i in 1:n)
+{
+betgtwr0[i]=exp(b1t[1,i])
+betgtwr1[i]=exp(x[i,]%*%b1t[,i])
+H0t[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgtwr0[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgtwr0[i])))
+H1t[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgtwr1[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgtwr1[i])))
+}
+}
+L0t=sum(H0t)
+L1t=sum(H1t)
+loglike=t(rbind(H1t,H0t))
+LRt=2*(L1t-L0t)
+AICc_GTWRGamma=-
+2*L1t+2*(nrow(param))+(2*(nrow(param))*(nrow(param)+1))/(n-
+(nrow(param))-1)
+AICC_GTWR = round(AICc_GTWRGamma,digits = 10)
+list(tau = tau0, AICC_GTWR = AICC_GTWR)
+}
+#menentukan parameter lamda dan miu
+GTWLam = function(tau0,lamda0)
+{
+dt = matrix(c(0),n,n,byrow=T)
+wt = matrix(c(0),n,n,byrow=T)
+lamda = lamda0
+miu = tau0*lamda0
+for (i in 1:n){
+for (j in 1:n){
+dt[i,j] = sqrt((lamda*((long[i]-long[j])^2)+((lat[i]-
+lat[j])^2))+(miu*((time[i]-time[j])/24)^2))
+wt[i,j] = exp(-0.5*((dt[i,j]/bw.fg)^2))
+}
+}
+#estimasi parameter
+{
+for (i in 1:n)
+{
+Q_gw = function(param)
+{
+bet = as.matrix(param[1:p])
+betgtwr = exp(x%*%bet)
+for (j in 1:n)
+{
+a[j] = (-log(gamma(alfa)))+(-
+alfa*log(betgtwr[j]))+(alfa*log(alfa))+((alfa-1)*(log(y[j])))+(-
+((y[j]*alfa)/(betgtwr[j])))*wt[i,j]
+}
+Q_gw = sum(a)
+}
+
+fit=optim(par=start[2:5],fn=Q_gw,control=list(fnscale=-1,ndeps=rep(1e-
+6,4)),hessian=TRUE)
+
+parameter=as.matrix(fit$par)
+hes=fit$hessian
+inv=diag(solve(-hes))
+hasil[,i]=parameter
+se[,i]=as.matrix(sqrt(abs(inv)))
+z[,i]=hasil[,i]/se[,i]
+pval[,i]=2*pnorm(abs(z[,i]),lower.tail=FALSE)
+for(j in 1:p)
+{
+if (pval[j,i]<0.01)
+signi[j,i]="***"
+else
+if (pval[j,i]<0.05)
+signi[j,i]=" **"
+else
+if (pval[j,i]<0.1)
+signi[j,i]=" *"
+else signi[j,i]="..."
+}
+}
+}
+#Nilai Devians GWGamma
+b1t = hasil[1:p,]
+betgtwr1 = matrix(nrow=n,ncol=1)
+betgtwr0 = matrix(nrow=n,ncol=1)
+H0t=matrix(nrow=1,ncol=n)
+H1t=matrix(nrow=1,ncol=n)
+{
+for (i in 1:n)
+{
+betgtwr0[i]=exp(b1t[1,i])
+betgtwr1[i]=exp(x[i,]%*%b1t[,i])
+H0t[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgtwr0[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgtwr0[i])))
+H1t[i] = (-n*log(gamma(alfa)))+(-
+alfa*log(betgtwr1[i]))+(n*alfa*log(alfa))+((alfa-1)*(log(y[i])))+(-
+((y[i]*alfa)/(betgtwr1[i])))
+}
+}
+L0t=sum(H0t)
+L1t=sum(H1t)
+loglike=t(rbind(H1t,H0t))
+LRt=2*(L1t-L0t)
+RSquare_GTWR = 1-((L1t/L0t)^2/n)
+AICc_GTWGamma=-
+2*L1t+2*(nrow(param))+(2*(nrow(param))*(nrow(param)+1))/(n-
+(nrow(param))-1)
+list(lamda = lamda, miu = miu, AICC = AICc_GTWGamma,LRt = LRt,d =
+dt, wt = wt, hasil = hasil, z = z, pval = pval)
+}
+optim = GTWLam(0.002,0.001)
+write.csv(optim$d,file="D:// euclidean_2.csv")
+write.csv(optim$wt,file="D:// matriks_gtwr.csv")
+write.csv(optim$hasil,file="D:// koef_parameter_gtwr.csv")
+write.csv(optim$z,file="D:// nilai_z_gtwr.csv")
+write.csv(optim$pval,file="D:// gtwr_Pval.csv")
+#BULELENG
+Buleleng <- read_excel("D:/Apa hayo/buleleng.xlsx")
+variabel <- dplyr::select(Buleleng, IR, CH, Temp, RH, IR_1, IR_2, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#JEMBRANA
+Jembrana <- read_excel("D:/Apa hayo/jembrana.xlsx")
+variabel <- dplyr::select(Jembrana, IR, CH, Temp, RH, IR_1, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#TABANAN
+Tabanan <- read_excel("D:/Apa hayo/tabanan.xlsx")
+variabel <- dplyr::select(Tabanan, IR, CH, Temp, RH, IR_1, IR_2, IR_4,
+CH_1, Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#BADUNG
+Badung <- read_excel("D:/Apa hayo/badung.xlsx")
+variabel <- dplyr::select(Badung, IR, CH, Temp, RH, IR_1, IR_2, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#GIANYAR
+Gianyar <- read_excel("D:/Apa hayo/gianyar.xlsx")
+variabel <- dplyr::select(Gianyar, IR, CH, Temp, RH, IR_1, IR_3, IR_4,
+CH_1, Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#KLUNGKUNG
+Klungkung <- read_excel("D:/Apa hayo/klungkung.xlsx")
+variabel <- dplyr::select(Klungkung, IR, CH, Temp, RH, IR_1, IR_2, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#BANGLI
+Bangli <- read_excel("D:/Apa hayo/bangli.xlsx")
+variabel <- dplyr::select(Bangli, IR, CH, Temp, RH, IR_1, IR_2, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#KARANGASEM
+Karangasem <- read_excel("D:/Apa hayo/karangasem.xlsx")
+variabel <- dplyr::select(Karangasem, IR, CH, Temp, RH, IR_1, IR_2, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
+#DENPASAR
+Denpasar <- read_excel("D:/Apa hayo/denpasar.xlsx")
+variabel <- dplyr::select(Denpasar, IR, CH, Temp, RH, IR_1, CH_1,
+Temp_1, RH_1)
+library(corrplot)
+corr = cor(variabel)
+corvarx = corrplot(corr,method = "number", type="upper")
